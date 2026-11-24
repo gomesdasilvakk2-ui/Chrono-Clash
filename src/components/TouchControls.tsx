@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { PointerEvent as RPointerEvent, ReactNode } from 'react';
 import type { Game, HudState } from '../game/engine';
-import { WEAPONS } from '../game/weapons';
+import { WEAPONS, TRUTH } from '../game/weapons';
 import { cn } from '../utils/cn';
 
 interface Props {
@@ -39,7 +39,11 @@ function HoldBtn({
       onPointerDown={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        e.currentTarget.setPointerCapture(e.pointerId);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
         last.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
         onDown();
       }}
@@ -74,7 +78,16 @@ export default function TouchControls({ getGame, hud }: Props) {
     b.style.opacity = active ? '1' : '0.35';
   };
 
+  const g = getGame();
+  const active = !!g && (hud.phase === 'intro' || hud.phase === 'playing' || hud.phase === 'nuke') && !hud.paused;
+
   useEffect(() => {
+    if (!active) {
+      joy.current = null;
+      look.current = null;
+      getGame()?.clearTouch();
+      return;
+    }
     const home = () => {
       if (!joy.current) {
         const h = homePos();
@@ -84,24 +97,22 @@ export default function TouchControls({ getGame, hud }: Props) {
     home();
     window.addEventListener('resize', home);
     return () => window.removeEventListener('resize', home);
-  });
+  }, [active]);
 
   const stopJoy = () => {
-    const g = getGame();
+    const game = getGame();
     joy.current = null;
-    if (g) {
-      g.touchMove.x = 0;
-      g.touchMove.y = 0;
+    if (game) {
+      game.touchMove.x = 0;
+      game.touchMove.y = 0;
     }
     if (knobRef.current) knobRef.current.style.transform = 'translate(0px,0px)';
     const h = homePos();
     placeBase(h.x, h.y, false);
   };
 
-  const g = getGame();
-  const active = (hud.phase === 'intro' || hud.phase === 'playing' || hud.phase === 'nuke') && !hud.paused;
   if (!g || !active) return null;
-  const w = WEAPONS[hud.level - 1];
+  const w = hud.truth ? TRUTH : WEAPONS[hud.level - 1];
   const canVehicle = !!hud.nearVehicle || !!hud.vehicle;
   const changeLevel = (d: number) => g.setLevel(g.player.level + d, 'treino');
 
@@ -115,7 +126,11 @@ export default function TouchControls({ getGame, hud }: Props) {
           e.preventDefault();
           g.sfx.init();
           if (look.current) return;
-          e.currentTarget.setPointerCapture(e.pointerId);
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {
+            /* ignore */
+          }
           look.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
         }}
         onPointerMove={(e) => {
@@ -131,6 +146,9 @@ export default function TouchControls({ getGame, hud }: Props) {
         onPointerCancel={(e) => {
           if (look.current?.id === e.pointerId) look.current = null;
         }}
+        onLostPointerCapture={(e) => {
+          if (look.current?.id === e.pointerId) look.current = null;
+        }}
       />
 
       {/* zona do joystick (esquerda) */}
@@ -141,7 +159,11 @@ export default function TouchControls({ getGame, hud }: Props) {
           e.preventDefault();
           g.sfx.init();
           if (joy.current) return;
-          e.currentTarget.setPointerCapture(e.pointerId);
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {
+            /* ignore */
+          }
           joy.current = { id: e.pointerId, ox: e.clientX, oy: e.clientY };
           placeBase(e.clientX, e.clientY, true);
         }}
@@ -173,6 +195,9 @@ export default function TouchControls({ getGame, hud }: Props) {
           if (joy.current?.id === e.pointerId) stopJoy();
         }}
         onPointerCancel={(e) => {
+          if (joy.current?.id === e.pointerId) stopJoy();
+        }}
+        onLostPointerCapture={(e) => {
           if (joy.current?.id === e.pointerId) stopJoy();
         }}
       />

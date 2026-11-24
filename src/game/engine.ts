@@ -8,7 +8,7 @@ import type { Rail } from './mapgen';
 import { getMap } from './maps';
 import type { MapDef } from './maps';
 import { Particles } from './particles';
-import { Humanoid, makeLabel, SKINS } from './humanoid';
+import { Humanoid, makeLabel, disposeHumanoidCaches, SKINS } from './humanoid';
 import type { Outfit } from './humanoid';
 import { VEHICLES, buildVehicleModel, animateVehicle } from './vehicles';
 import type { VehicleKind, VehicleDef, VehicleModel } from './vehicles';
@@ -19,7 +19,7 @@ import type { ViewModel } from './viewmodels';
 import { WEAPONS, TRUTH, TRUTH_POWERS } from './weapons';
 import { markConquered, grantTruth, loadProgress, NEEDED } from './progress';
 import type { WeaponDef } from './weapons';
-import { tickWeapon, tickEffects, vehicleSpecial, disposeEffects } from './combat';
+import { tickWeapon, tickEffects, vehicleSpecial, disposeEffects, disposeGroup } from './combat';
 
 export type Phase = 'intro' | 'playing' | 'nuke' | 'ended' | 'rewinding';
 export type Difficulty = 'easy' | 'normal' | 'insane';
@@ -382,8 +382,17 @@ export class Game {
   suppressDebris = false;
   nextId = 1;
   resizeObs: ResizeObserver | null = null;
+  tracerGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1);
+  bulletGeo = new THREE.SphereGeometry(0.1, 6, 5);
+  bulletMat = new THREE.MeshBasicMaterial({ color: 0xffe066, fog: false });
+  pBulletGeo = new THREE.CylinderGeometry(1, 1, 1, 5);
+  bulletMats = new Map<number, THREE.MeshBasicMaterial>();
 
   constructor(container: HTMLElement, radar: HTMLCanvasElement | null, opts: GameOptions, cb: Callbacks) {
+    this.tracerGeo.userData.shared = true;
+    this.bulletGeo.userData.shared = true;
+    this.bulletMat.userData.shared = true;
+    this.pBulletGeo.userData.shared = true;
     this.container = container;
     this.radar = radar;
     this.opts = opts;
@@ -962,7 +971,7 @@ export class Game {
   tracer(a: THREE.Vector3, b: THREE.Vector3, color: number, width = 0.03, life = 0.08) {
     const len = a.distanceTo(b);
     if (len < 0.05) return;
-    const geo = Game.tracerGeo;
+    const geo = this.tracerGeo;
     const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, fog: false, depthWrite: false }));
     mesh.position.copy(a).add(b).multiplyScalar(0.5);
     _v.copy(b).sub(a).normalize();
@@ -972,7 +981,6 @@ export class Game {
     this.scene.add(mesh);
     this.tracers.push({ mesh, life, max: life, w: width });
   }
-  static tracerGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1);
 
   spark(x: number, y: number, z: number, color: number, n = 6, speed = 4) {
     this.particles.burst(x, y, z, n, color, speed, 0.09, 0.4, { glow: true, grav: 10 });
@@ -1697,15 +1705,13 @@ export class Game {
     t.z += (Math.random() - 0.5) * sp;
     const dir = t.sub(o).normalize();
     o.addScaledVector(dir, 0.6);
-    const mesh = new THREE.Mesh(Game.bulletGeo, Game.bulletMat);
+    const mesh = new THREE.Mesh(this.bulletGeo, this.bulletMat);
     mesh.position.copy(o);
     this.scene.add(mesh);
     this.projectiles.push({ kind: 'enemy', pos: o, vel: dir.clone().multiplyScalar(54), life: 2.5, mesh, dmg: this.diff.dmg, owner: 'bot', bot: a, speed: 54 });
     const d2 = a.pos.distanceTo(p.pos);
     if (d2 < 70) this.sfx.shot('enemy');
   }
-  static bulletGeo = new THREE.SphereGeometry(0.1, 6, 5);
-  static bulletMat = new THREE.MeshBasicMaterial({ color: 0xffe066, fog: false });
 
   updateBot(a: Actor, dt: number) {
     const p = this.player;
@@ -2072,11 +2078,15 @@ export class Game {
       }
     }
     for (let i = this.projectiles.length - 1; i >= 0; i--) this.removeProjectile(i);
-    this.rifts.forEach((r) => this.scene.remove(r.mesh));
+    this.rifts.forEach((r) => {
+      this.scene.remove(r.mesh);
+      disposeGroup(r.mesh);
+    });
     this.rifts = [];
     this.bombs = [];
     this.burning.clear();
     this.dismount();
+    this.clearTouch();
     this.announce('☢️ DETONADA ☢️', '#ffb347', 1800);
   }
 
@@ -2128,12 +2138,16 @@ export class Game {
     this.rw = { t: 0, dur, nukeT0: this.nukeT, restored: 0, log: this.world.log.slice(), inflight: 0, hist: this.hist.slice() };
     this.phase = 'rewinding';
     for (let i = this.projectiles.length - 1; i >= 0; i--) this.removeProjectile(i);
-    this.rifts.forEach((r) => this.scene.remove(r.mesh));
+    this.rifts.forEach((r) => {
+      this.scene.remove(r.mesh);
+      disposeGroup(r.mesh);
+    });
     this.rifts = [];
     this.bombs = [];
     this.burning.clear();
     this.particles.clear();
     this.dismountSilent();
+    this.clearTouch();
     this.sfx.rewind(dur);
     this.announce('⏪ REVERTENDO O TEMPO...', '#7dd3fc', dur * 1000);
     this.world.stabDirty = false;
@@ -2201,16 +2215,21 @@ export class Game {
     }
     const N = r.log.length;
     const target = Math.floor(clamp((prog - 0.06) / 0.82, 0, 1) * N);
+    const solidPool = this.particles.solid;
+    const stride = N > 1500 ? Math.max(2, Math.ceil(N / 2200)) : 1;
     while (r.restored < target) {
       const e = r.log[N - 1 - r.restored];
       r.restored++;
-      if (N > 1500 && r.restored % 4 !== 0 && r.restored % 3 !== 0) {
+      if (stride > 1 && r.restored % stride !== 0) {
+        this.world.restoreCell(e);
+        continue;
+      }
+      if (solidPool.items.length >= solidPool.max - 64) {
         this.world.restoreCell(e);
         continue;
       }
       const c = cellXYZ(e.idx);
-      r.inflight++;
-      this.particles.spawn({
+      const spawned = this.particles.spawn({
         x: c.x + 0.5 + (Math.random() - 0.5) * 18,
         y: c.y + 0.5 + 3 + Math.random() * 12,
         z: c.z + 0.5 + (Math.random() - 0.5) * 18,
@@ -2226,6 +2245,8 @@ export class Game {
           r.inflight--;
         },
       });
+      if (spawned) r.inflight++;
+      else this.world.restoreCell(e);
     }
     this.world.stabDirty = false;
     for (const a of this.actors) this.syncActor(a, dt);
@@ -2330,16 +2351,17 @@ export class Game {
     this.camY = p.pos.y + this.eyeHeight();
     for (const a of this.actors) if (a.alive && a.hp <= 0) a.hp = a.maxHp;
     const log = this.world.log;
+    const solidPool = this.particles.solid;
     let n = 0;
     while (log.length && log[log.length - 1].t >= s.t) {
       const e = log.pop()!;
       n++;
-      if (n > 500 && n % 2 === 0) {
+      if ((n > 500 && n % 2 === 0) || solidPool.items.length >= solidPool.max - 64) {
         this.world.restoreCell(e);
         continue;
       }
       const c = cellXYZ(e.idx);
-      this.particles.spawn({
+      const spawned = this.particles.spawn({
         x: c.x + 0.5 + (Math.random() - 0.5) * 10,
         y: c.y + 2.5 + Math.random() * 8,
         z: c.z + 0.5 + (Math.random() - 0.5) * 10,
@@ -2354,6 +2376,7 @@ export class Game {
           this.world.restoreCell(e);
         },
       });
+      if (!spawned) this.world.restoreCell(e);
     }
     for (let i = this.projectiles.length - 1; i >= 0; i--) this.removeProjectile(i);
     this.burning.clear();
@@ -2363,21 +2386,19 @@ export class Game {
     return true;
   }
 
-  static pBulletGeo = new THREE.CylinderGeometry(1, 1, 1, 5);
-  static bulletMats = new Map<number, THREE.MeshBasicMaterial>();
-
   fireBullet(
     o: THREE.Vector3,
     d: THREE.Vector3,
     opt: { speed: number; drop?: number; drag?: number; dmg: number; head: number; pierce: number; blockAmt: number; range: number; weapon: string; color: number; falloff?: number },
   ) {
-    let mat = Game.bulletMats.get(opt.color);
+    let mat = this.bulletMats.get(opt.color);
     if (!mat) {
       mat = new THREE.MeshBasicMaterial({ color: opt.color, fog: false });
-      Game.bulletMats.set(opt.color, mat);
+      mat.userData.shared = true;
+      this.bulletMats.set(opt.color, mat);
     }
     const p = this.player;
-    const mesh = new THREE.Mesh(Game.pBulletGeo, mat);
+    const mesh = new THREE.Mesh(this.pBulletGeo, mat);
     const pos = o.clone().addScaledVector(d, 0.9);
     pos.y -= 0.1;
     pos.x += Math.cos(p.yaw) * 0.14;
@@ -2587,13 +2608,7 @@ export class Game {
     this.wormholeOn = false;
     if (this.wormhole) {
       this.scene.remove(this.wormhole);
-      this.wormhole.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh) {
-          m.geometry.dispose();
-          (m.material as THREE.Material).dispose();
-        }
-      });
+      disposeGroup(this.wormhole);
       this.wormhole = null;
       this.wormholeParts = null;
     }
@@ -2647,6 +2662,7 @@ export class Game {
     if (this.altar) {
       this.particles.burst(this.altar.position.x, this.altar.position.y, this.altar.position.z, 40, 0xfde68a, 12, 0.3, 1.2, { glow: true, grav: -2 });
       this.scene.remove(this.altar);
+      disposeGroup(this.altar);
       this.altar = null;
     }
     this.ws = this.newWeaponState();
@@ -3062,20 +3078,58 @@ export class Game {
     this.resizeObs?.disconnect();
     this.releaseLock();
     this.sfx.dispose();
+    while (this.projectiles.length) this.removeProjectile(this.projectiles.length - 1);
+    for (const t of this.tracers) {
+      this.scene.remove(t.mesh);
+      (t.mesh.material as THREE.Material).dispose();
+    }
+    this.tracers = [];
+    this.clearWormhole();
+    if (this.altar) {
+      this.scene.remove(this.altar);
+      disposeGroup(this.altar);
+      this.altar = null;
+    }
     disposeEffects(this);
+    this.scene.remove(this.world.group);
     this.world.dispose();
+    this.scene.remove(this.particles.group);
     this.particles.dispose();
+    this.scene.remove(this.nuke.group);
     this.nuke.dispose();
-    if (this.vm) disposeViewModel(this.vm);
+    if (this.vm) {
+      this.camera.remove(this.vm.group);
+      disposeViewModel(this.vm);
+      this.vm = null;
+    }
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (m.isMesh || (o as THREE.Points).isPoints) {
-        m.geometry?.dispose();
-        const mat = m.material as THREE.Material | THREE.Material[];
-        if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
-        else mat?.dispose();
+      const pts = o as THREE.Points;
+      const spr = o as THREE.Sprite;
+      if (m.isMesh || pts.isPoints || spr.isSprite) {
+        if (m.isMesh || pts.isPoints) {
+          const geom = m.geometry;
+          if (geom && !geom.userData.shared) geom.dispose();
+        }
+        const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+        const disposeMat = (x: THREE.Material) => {
+          if (x.userData.shared) return;
+          const withMap = x as THREE.MeshBasicMaterial | THREE.SpriteMaterial;
+          if (withMap.map && !withMap.map.userData.shared) withMap.map.dispose();
+          x.dispose();
+        };
+        if (Array.isArray(mat)) mat.forEach(disposeMat);
+        else if (mat) disposeMat(mat);
       }
     });
+    this.tracerGeo.dispose();
+    this.bulletGeo.dispose();
+    this.bulletMat.dispose();
+    this.pBulletGeo.dispose();
+    this.bulletMats.forEach((m) => m.dispose());
+    this.bulletMats.clear();
+    disposeHumanoidCaches();
+    this.sun.shadow.map?.dispose();
     this.renderer.dispose();
     if (this.canvas.parentElement) this.canvas.parentElement.removeChild(this.canvas);
   }

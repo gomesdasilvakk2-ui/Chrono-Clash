@@ -219,8 +219,15 @@ export function disposeViewModel(vm: ViewModel) {
   vm.group.traverse((o) => {
     const m = o as THREE.Mesh;
     if (m.isMesh) {
-      m.geometry.dispose();
-      (m.material as THREE.Material).dispose();
+      if (m.geometry && !m.geometry.userData.shared) m.geometry.dispose();
+      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mat)) {
+        mat.forEach((x) => {
+          if (!x.userData.shared) x.dispose();
+        });
+      } else if (mat && !mat.userData.shared) {
+        mat.dispose();
+      }
     }
   });
 }

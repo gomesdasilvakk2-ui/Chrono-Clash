@@ -34,6 +34,7 @@ function material(c: number) {
   let m = matCache.get(c);
   if (!m) {
     m = new THREE.MeshLambertMaterial({ color: c });
+    m.userData.shared = true;
     matCache.set(c, m);
   }
   return m;
@@ -50,6 +51,7 @@ function mk(w: number, h: number, d: number, color: number, x = 0, y = 0, z = 0,
   if (!g) {
     g = new THREE.BoxGeometry(w, h, d);
     if (top) g.translate(0, -h / 2, 0);
+    g.userData.shared = true;
     geoCache.set(key, g);
   }
   const m = new THREE.Mesh(g, material(color));
@@ -245,7 +247,9 @@ export class Humanoid {
       if (!blobGeo) {
         blobGeo = new THREE.CircleGeometry(0.55, 14);
         blobGeo.rotateX(-Math.PI / 2);
+        blobGeo.userData.shared = true;
         blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false });
+        blobMat.userData.shared = true;
       }
       this.blob = new THREE.Mesh(blobGeo, blobMat!);
       this.blob.position.y = 0.03;
@@ -317,4 +321,15 @@ export function makeLabel(text: string, color = '#ffffff') {
   sp.scale.set(1.9, 0.36, 1);
   sp.position.y = 2.35;
   return sp;
+}
+
+export function disposeHumanoidCaches() {
+  for (const g of geoCache.values()) g.dispose();
+  geoCache.clear();
+  for (const m of matCache.values()) m.dispose();
+  matCache.clear();
+  blobGeo?.dispose();
+  blobGeo = null;
+  blobMat?.dispose();
+  blobMat = null;
 }

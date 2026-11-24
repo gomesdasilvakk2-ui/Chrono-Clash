@@ -7,9 +7,21 @@ import { clamp } from './rng';
 import { W, D } from './world';
 
 const W_D = W * D;
-const ROCKET_GEO = new THREE.CylinderGeometry(0.1, 0.1, 0.9, 8);
-const ROCKET_MAT = new THREE.MeshLambertMaterial({ color: 0xb91c1c, emissive: 0x330000 });
+let rocketGeo: THREE.CylinderGeometry | null = null;
+let rocketMat: THREE.MeshLambertMaterial | null = null;
 let burnT = 0;
+
+function getRocketAssets() {
+  if (!rocketGeo) {
+    rocketGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.9, 8);
+    rocketGeo.userData.shared = true;
+  }
+  if (!rocketMat) {
+    rocketMat = new THREE.MeshLambertMaterial({ color: 0xb91c1c, emissive: 0x330000 });
+    rocketMat.userData.shared = true;
+  }
+  return { geo: rocketGeo, mat: rocketMat };
+}
 
 const cdSet = (ws: WeaponState, v: number) => {
   ws.cd = v;
@@ -132,12 +144,25 @@ function makeRiftMesh() {
   return grp;
 }
 
-function disposeGroup(grp: THREE.Object3D) {
+export function disposeGroup(grp: THREE.Object3D) {
   grp.traverse((o) => {
     const m = o as THREE.Mesh;
     if (m.isMesh) {
-      m.geometry.dispose();
-      (m.material as THREE.Material).dispose();
+      if (m.geometry && !m.geometry.userData.shared) m.geometry.dispose();
+      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mat)) {
+        mat.forEach((x) => {
+          if (!x.userData.shared) {
+            const withMap = x as THREE.MeshBasicMaterial;
+            withMap.map?.dispose();
+            x.dispose();
+          }
+        });
+      } else if (mat && !mat.userData.shared) {
+        const withMap = mat as THREE.MeshBasicMaterial;
+        withMap.map?.dispose();
+        mat.dispose();
+      }
     }
   });
 }
@@ -472,7 +497,8 @@ export function tickWeapon(g: Game, dt: number, inp: Input) {
       if (press && ws.cd <= 0) {
         cdSet(ws, 1.8);
         const pos = eye.clone().addScaledVector(aim, 1.1);
-        const mesh = new THREE.Mesh(ROCKET_GEO, ROCKET_MAT);
+        const rocket = getRocketAssets();
+        const mesh = new THREE.Mesh(rocket.geo, rocket.mat);
         mesh.position.copy(pos);
         g.addProjectile({ kind: 'rocket', pos, vel: aim.clone().multiplyScalar(46), life: 4, mesh, dmg: 170, owner: 'player', speed: 46 });
         g.sfx.shot('rocket');
@@ -875,6 +901,8 @@ export function disposeEffects(g: Game) {
   });
   g.rifts = [];
   burnT = 0;
-  ROCKET_GEO.dispose();
-  ROCKET_MAT.dispose();
+  rocketGeo?.dispose();
+  rocketGeo = null;
+  rocketMat?.dispose();
+  rocketMat = null;
 }

@@ -174,9 +174,9 @@ export class Particles {
     this.group.add(this.solid.mesh, this.glow.mesh);
   }
 
-  spawn(s: PSpawn) {
+  spawn(s: PSpawn): boolean {
     const pool = s.glow ? this.glow : this.solid;
-    if (pool.items.length >= pool.max) return;
+    if (pool.items.length >= pool.max) return false;
     col.setHex(s.color ?? 0xffffff);
     const spin = s.spin ?? 6;
     const p: P = {
@@ -212,6 +212,7 @@ export class Particles {
       onDone: s.onDone,
     };
     pool.items.push(p);
+    return true;
   }
 
   burst(

@@ -971,7 +971,7 @@ function japao(b: B) {
     const p = b.outside(70, 115);
     const h = rng.range(30, 95);
     const w = rng.range(9, 16);
-    const t = tex.clone();
+    const t = i === 0 ? tex : tex.clone();
     t.needsUpdate = true;
     t.repeat.set(Math.round(w / 6), Math.round(h / 12));
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), new THREE.MeshBasicMaterial({ map: t }));
