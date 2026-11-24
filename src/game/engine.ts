@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { VoxelWorld, W, D, H } from './world';
 import type { Impulse, LogEntry } from './world';
 import { DEFS, kindOf } from './blocks';
@@ -20,6 +24,8 @@ import { WEAPONS, TRUTH, TRUTH_POWERS } from './weapons';
 import { markConquered, grantTruth, loadProgress, NEEDED } from './progress';
 import type { WeaponDef } from './weapons';
 import { tickWeapon, tickEffects, vehicleSpecial, disposeEffects, disposeGroup } from './combat';
+import { QUALITY_PRESETS, loadQuality, saveQuality } from './graphics';
+import type { QualityLevel, QualityPreset } from './graphics';
 
 export type Phase = 'intro' | 'playing' | 'nuke' | 'ended' | 'rewinding';
 export type Difficulty = 'easy' | 'normal' | 'insane';
@@ -30,6 +36,7 @@ export interface GameOptions {
   training: boolean;
   touch: boolean;
   truth?: boolean;
+  quality?: QualityLevel;
 }
 
 export interface HudState {
@@ -70,6 +77,7 @@ export interface HudState {
   wormhole: { dist: number; ang: number } | null;
   altar: number;
   conquered: number;
+  quality: QualityLevel;
 }
 
 export interface Callbacks {
@@ -382,6 +390,21 @@ export class Game {
   suppressDebris = false;
   nextId = 1;
   resizeObs: ResizeObserver | null = null;
+  quality: QualityLevel;
+  preset: QualityPreset;
+  composer: EffectComposer | null = null;
+  renderPass: RenderPass | null = null;
+  bloomPass: UnrealBloomPass | null = null;
+  outputPass: OutputPass | null = null;
+  composerSamples = 0;
+  composerDisabled = false;
+  drsScale = 1;
+  drsLowAcc = 0;
+  drsHighAcc = 0;
+  drsCooldown = 4;
+  sunOffset = new THREE.Vector3(55, 120, 40);
+  lastShadowSnapX = 1e9;
+  lastShadowSnapZ = 1e9;
   tracerGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1);
   bulletGeo = new THREE.SphereGeometry(0.1, 6, 5);
   bulletMat = new THREE.MeshBasicMaterial({ color: 0xffe066, fog: false });
@@ -403,11 +426,15 @@ export class Game {
     this.sanctum = this.map.id === 'santuario';
     this.truthMode = !!opts.truth;
     this.conqueredCount = loadProgress().conquered.length;
+    this.quality = opts.quality ?? loadQuality(opts.touch);
+    this.preset = QUALITY_PRESETS[this.quality];
 
     this.renderer = new THREE.WebGLRenderer({ antialias: !opts.touch, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, opts.touch ? 1.25 : 1.75));
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = this.preset.exposure;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.shadowMap.enabled = this.preset.shadows;
+    this.renderer.shadowMap.type = this.preset.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.canvas = this.renderer.domElement;
     this.canvas.style.width = '100%';
     this.canvas.style.height = '100%';
@@ -416,8 +443,7 @@ export class Game {
     container.appendChild(this.canvas);
     const w = container.clientWidth || window.innerWidth;
     const h = container.clientHeight || window.innerHeight;
-    this.renderer.setSize(w, h, false);
-    this.camera = new THREE.PerspectiveCamera(75, w / h, 0.05, 900);
+    this.camera = new THREE.PerspectiveCamera(75, w / h, 0.05, this.preset.far);
     this.scene.add(this.camera);
 
     this.footCanvas = document.createElement('canvas');
@@ -426,6 +452,7 @@ export class Game {
     this.footCtx = this.footCanvas.getContext('2d')!;
 
     this.buildEnvironment();
+    this.applyQuality(this.quality, false);
 
     this.world.onRemove = this.onBlockRemoved;
     const res = buildMap(opts.mapId, this.world, new Rng(opts.mapId.length * 7919 + 1234));
@@ -826,6 +853,8 @@ export class Game {
     this.keys = {};
     this.mouseL = false;
     this.mouseR = false;
+    this.drsLowAcc = 0;
+    this.drsHighAcc = 0;
   };
 
   bindInput() {
@@ -906,11 +935,233 @@ export class Game {
     this.pushHud(true);
   }
 
+  effectiveDpr() {
+    const raw = window.devicePixelRatio || 1;
+    const cap = this.touch ? this.preset.maxDprTouch : this.preset.maxDprDesktop;
+    return Math.max(0.65, Math.min(raw, cap) * this.preset.resScale * this.drsScale);
+  }
+
+  desiredComposerSamples() {
+    if (this.touch || this.preset.samples <= 0 || !this.renderer.capabilities.isWebGL2) return 0;
+    return Math.min(this.preset.samples, this.renderer.capabilities.maxSamples || 0);
+  }
+
+  createComposerTarget(w: number, h: number, dpr: number, samples: number) {
+    const hasHalfFloat =
+      this.renderer.extensions.has('EXT_color_buffer_half_float') ||
+      this.renderer.extensions.has('EXT_color_buffer_float');
+    const rt = new THREE.WebGLRenderTarget(
+      Math.max(1, Math.floor(w * dpr)),
+      Math.max(1, Math.floor(h * dpr)),
+      {
+        type: hasHalfFloat ? THREE.HalfFloatType : THREE.UnsignedByteType,
+        samples,
+      },
+    );
+    rt.texture.name = 'ChronoClash.composerRT';
+    return rt;
+  }
+
+  ensureComposer(w: number, h: number, dpr: number) {
+    if (this.composerDisabled) return;
+    const samples = this.desiredComposerSamples();
+    try {
+      if (!this.composer) {
+        const rt = this.createComposerTarget(w, h, dpr, samples);
+        const composer = new EffectComposer(this.renderer, rt);
+        const renderPass = new RenderPass(this.scene, this.camera);
+        const bloomPass = new UnrealBloomPass(
+          new THREE.Vector2(Math.max(1, Math.floor(w * dpr)), Math.max(1, Math.floor(h * dpr))),
+          this.preset.bloomStrength,
+          this.preset.bloomRadius,
+          this.preset.bloomThreshold,
+        );
+        const outputPass = new OutputPass();
+        composer.addPass(renderPass);
+        composer.addPass(bloomPass);
+        composer.addPass(outputPass);
+        composer.setPixelRatio(dpr);
+        composer.setSize(w, h);
+        this.composer = composer;
+        this.renderPass = renderPass;
+        this.bloomPass = bloomPass;
+        this.outputPass = outputPass;
+        this.composerSamples = samples;
+      } else {
+        if (this.composerSamples !== samples) {
+          const rt = this.createComposerTarget(w, h, dpr, samples);
+          this.composer.reset(rt);
+          this.composerSamples = samples;
+        }
+        if (this.bloomPass) {
+          this.bloomPass.strength = this.preset.bloomStrength;
+          this.bloomPass.radius = this.preset.bloomRadius;
+          this.bloomPass.threshold = this.preset.bloomThreshold;
+        }
+        this.composer.setPixelRatio(dpr);
+        this.composer.setSize(w, h);
+      }
+    } catch {
+      this.composerDisabled = true;
+      this.disposeComposer();
+    }
+  }
+
+  disposeComposer() {
+    if (this.bloomPass) {
+      const bp = this.bloomPass as unknown as { materialHighPassFilter?: THREE.Material };
+      bp.materialHighPassFilter?.dispose();
+      this.bloomPass.dispose();
+      this.bloomPass = null;
+    }
+    if (this.outputPass) {
+      const op = this.outputPass as unknown as { dispose?: () => void };
+      op.dispose?.();
+      this.outputPass = null;
+    }
+    this.renderPass = null;
+    if (this.composer) {
+      this.composer.dispose();
+      this.composer = null;
+    }
+    this.composerSamples = 0;
+  }
+
+  syncRenderResolution(w?: number, h?: number) {
+    const cw = w ?? (this.container.clientWidth || window.innerWidth);
+    const ch = h ?? (this.container.clientHeight || window.innerHeight);
+    if (!cw || !ch) return;
+    const effDpr = this.effectiveDpr();
+    this.renderer.setPixelRatio(effDpr);
+    this.renderer.setSize(cw, ch, false);
+    if (this.composer && this.preset.postProcess && !this.composerDisabled) {
+      this.composer.setPixelRatio(effDpr);
+      this.composer.setSize(cw, ch);
+    }
+  }
+
+  applyQuality(q: QualityLevel, persist = true) {
+    this.quality = q;
+    this.preset = QUALITY_PRESETS[q];
+    if (persist) saveQuality(q);
+    this.drsScale = 1;
+    this.drsLowAcc = 0;
+    this.drsHighAcc = 0;
+    this.drsCooldown = 4;
+
+    this.camera.far = this.preset.far;
+    this.camera.updateProjectionMatrix();
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = this.preset.exposure;
+
+    if (!this.preset.shadows) {
+      this.sun.castShadow = false;
+      this.renderer.shadowMap.enabled = false;
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+    } else {
+      const nextType = this.preset.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+      const typeChanged = this.renderer.shadowMap.type !== nextType;
+      this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.type = nextType;
+      this.sun.castShadow = true;
+      const sz = this.touch ? Math.min(this.preset.shadowSize, 1024) : this.preset.shadowSize;
+      if (this.sun.shadow.mapSize.x !== sz) {
+        this.sun.shadow.mapSize.set(sz, sz);
+        this.sun.shadow.map?.dispose();
+        this.sun.shadow.map = null;
+      }
+      const r = this.preset.shadowRange;
+      const sc = this.sun.shadow.camera;
+      sc.left = -r;
+      sc.right = r;
+      sc.top = r;
+      sc.bottom = -r;
+      sc.updateProjectionMatrix();
+      this.lastShadowSnapX = 1e9;
+      this.lastShadowSnapZ = 1e9;
+      if (typeChanged) this.renderer.shadowMap.needsUpdate = true;
+    }
+
+    const cw = this.container.clientWidth || window.innerWidth;
+    const ch = this.container.clientHeight || window.innerHeight;
+    const effDpr = this.effectiveDpr();
+    this.renderer.setPixelRatio(effDpr);
+    this.renderer.setSize(cw, ch, false);
+    if (this.preset.postProcess && !this.composerDisabled) {
+      this.ensureComposer(cw, ch, effDpr);
+    } else {
+      this.disposeComposer();
+    }
+  }
+
+  setQuality(q: QualityLevel) {
+    this.applyQuality(q, true);
+    this.pushHud(true);
+  }
+
+  updateShadowFocus() {
+    if (!this.preset.shadows) return;
+    const overview = this.phase === 'ended' || (this.phase === 'rewinding' && this.nukeT > 0.05);
+    const tx = overview ? CX : clamp(this.player.pos.x, 16, W - 16);
+    const tz = overview ? CZ : clamp(this.player.pos.z, 16, D - 16);
+    if (this.lastShadowSnapX > 1e8 || Math.hypot(tx - this.lastShadowSnapX, tz - this.lastShadowSnapZ) >= 6) {
+      this.lastShadowSnapX = tx;
+      this.lastShadowSnapZ = tz;
+      this.sun.target.position.set(tx, 0, tz);
+      this.sun.position.set(tx + this.sunOffset.x, this.sunOffset.y, tz + this.sunOffset.z);
+      this.sun.target.updateMatrixWorld();
+    }
+  }
+
+  updateDrs(dt: number) {
+    if (this.paused || this.phase === 'rewinding' || this.phase === 'ended' || document.hidden) {
+      this.drsLowAcc = 0;
+      this.drsHighAcc = 0;
+      return;
+    }
+    if (this.drsCooldown > 0) {
+      this.drsCooldown -= dt;
+      return;
+    }
+    if (this.fps < 36 && this.drsScale > this.preset.minDrsScale) {
+      this.drsLowAcc += dt;
+      this.drsHighAcc = 0;
+      if (this.drsLowAcc >= 2.5) {
+        this.drsScale = Math.max(this.preset.minDrsScale, +(this.drsScale - 0.1).toFixed(2));
+        this.drsLowAcc = 0;
+        this.drsCooldown = 6;
+        this.syncRenderResolution();
+      }
+    } else if (this.fps > 55 && this.drsScale < 1) {
+      this.drsHighAcc += dt;
+      this.drsLowAcc = 0;
+      if (this.drsHighAcc >= 5.0) {
+        this.drsScale = Math.min(1, +(this.drsScale + 0.05).toFixed(2));
+        this.drsHighAcc = 0;
+        this.drsCooldown = 8;
+        this.syncRenderResolution();
+      }
+    } else {
+      this.drsLowAcc = Math.max(0, this.drsLowAcc - dt * 0.5);
+      this.drsHighAcc = Math.max(0, this.drsHighAcc - dt * 0.5);
+    }
+  }
+
+  renderFrame(dt: number) {
+    this.updateShadowFocus();
+    if (this.composer && this.preset.postProcess && !this.composerDisabled) {
+      this.composer.render(dt);
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
+  }
+
   resize() {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     if (!w || !h) return;
-    this.renderer.setSize(w, h, false);
+    this.syncRenderResolution(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -2694,8 +2945,9 @@ export class Game {
     this.updateTracers(dt);
     this.updateCamera(dt);
     this.updateWeather(dt);
+    this.updateDrs(dt);
     this.drawRadar(dt);
-    this.renderer.render(this.scene, this.camera);
+    this.renderFrame(dt);
     this.hudT -= dt;
     if (this.hudT <= 0) {
       this.hudT = 0.1;
@@ -3055,6 +3307,7 @@ export class Game {
       wormhole: this.wormholeOn ? this.wormholeInfo() : null,
       altar: this.sanctum && !this.truthGiven ? Math.hypot(p.pos.x - CX, p.pos.z - CZ) : -1,
       conquered: this.conqueredCount,
+      quality: this.quality,
     };
   }
 
@@ -3130,6 +3383,7 @@ export class Game {
     this.bulletMats.clear();
     disposeHumanoidCaches();
     this.sun.shadow.map?.dispose();
+    this.disposeComposer();
     this.renderer.dispose();
     if (this.canvas.parentElement) this.canvas.parentElement.removeChild(this.canvas);
   }

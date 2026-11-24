@@ -99,6 +99,7 @@ export default function GameView({ opts, onExit, onWormhole }: Props) {
           radarRef={radarRef}
           compact={touch}
           onMute={() => gameRef.current?.toggleMute()}
+          onQuality={(q) => gameRef.current?.setQuality(q)}
           onResume={() => (touch ? gameRef.current?.setUserPaused(false) : gameRef.current?.requestLock())}
           onExit={onExit}
           onRewind={() => gameRef.current?.startRewind()}

@@ -5,6 +5,8 @@ import { WEAPONS, TRUTH, TRUTH_POWERS } from '../game/weapons';
 import { loadProgress, resetProgress, NEEDED } from '../game/progress';
 import { VEHICLES } from '../game/vehicles';
 import type { GameOptions, Difficulty } from '../game/engine';
+import { QUALITY_LIST, hasSavedQuality, loadQuality, saveQuality } from '../game/graphics';
+import type { QualityLevel } from '../game/graphics';
 import { cn } from '../utils/cn';
 
 const VISIBLE = MAPS.filter((m) => !m.hidden);
@@ -82,6 +84,7 @@ export default function Menu({ onStart }: { onStart: (o: GameOptions) => void })
   const [difficulty, setDifficulty] = useState<Difficulty>('normal');
   const [training, setTraining] = useState(true);
   const [touch, setTouch] = useState(detectTouch);
+  const [quality, setQuality] = useState<QualityLevel>(() => loadQuality(detectTouch()));
   const [prog, setProg] = useState(loadProgress);
   const [useTruth, setUseTruth] = useState(false);
   const map = MAPS.find((m) => m.id === mapId)!;
@@ -230,8 +233,36 @@ export default function Menu({ onStart }: { onStart: (o: GameOptions) => void })
                       </button>
                     ))}
                   </div>
+                  <div className="mb-2 mt-4 font-display text-sm">QUALIDADE GRÁFICA</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {QUALITY_LIST.map((q) => (
+                      <button
+                        key={q.id}
+                        onClick={() => {
+                          setQuality(q.id);
+                          saveQuality(q.id);
+                        }}
+                        className={cn(
+                          'rounded-xl border px-2 py-2 text-center transition',
+                          quality === q.id ? 'border-white bg-white text-black' : 'border-white/20 bg-white/5 hover:bg-white/15',
+                        )}
+                      >
+                        <div className="font-display text-xs">{q.label.toUpperCase()}</div>
+                        <div className="text-[11px] opacity-70">{q.shortDesc}</div>
+                      </button>
+                    ))}
+                  </div>
                   <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl bg-white/5 p-3">
-                    <input type="checkbox" checked={touch} onChange={(e) => setTouch(e.target.checked)} className="mt-1 h-4 w-4 accent-cyan-400" />
+                    <input
+                      type="checkbox"
+                      checked={touch}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setTouch(next);
+                        if (!hasSavedQuality()) setQuality(loadQuality(next));
+                      }}
+                      className="mt-1 h-4 w-4 accent-cyan-400"
+                    />
                     <span className="text-sm">
                       <b>📱 Controles de toque</b>
                       <br />
@@ -260,7 +291,8 @@ export default function Menu({ onStart }: { onStart: (o: GameOptions) => void })
                 <button
                   onClick={() => {
                     if (touch) enterMobileMode();
-                    onStart({ mapId, difficulty, training, touch, truth: prog.truth && useTruth });
+                    saveQuality(quality);
+                    onStart({ mapId, difficulty, training, touch, truth: prog.truth && useTruth, quality });
                   }}
                   className="group relative overflow-hidden rounded-2xl bg-gradient-to-r from-fuchsia-500 via-rose-500 to-amber-400 p-[3px] shadow-[0_0_40px_rgba(255,61,242,0.45)] transition hover:scale-[1.03]"
                 >

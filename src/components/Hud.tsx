@@ -1,5 +1,7 @@
 import type { RefObject } from 'react';
 import type { HudState } from '../game/engine';
+import { QUALITY_LIST } from '../game/graphics';
+import type { QualityLevel } from '../game/graphics';
 import { WEAPONS, TRUTH, TRUTH_POWERS } from '../game/weapons';
 import { cn } from '../utils/cn';
 
@@ -32,6 +34,7 @@ interface Props {
   onExit: () => void;
   onRewind: () => void;
   onMute: () => void;
+  onQuality: (q: QualityLevel) => void;
   compact: boolean;
 }
 
@@ -42,7 +45,7 @@ const toneCls: Record<FeedItem['tone'], string> = {
   good: 'border-amber-400 bg-amber-950/70 text-amber-100',
 };
 
-export default function Hud({ hud, feed, ann, radarRef, onResume, onExit, onRewind, onMute, compact }: Props) {
+export default function Hud({ hud, feed, ann, radarRef, onResume, onExit, onRewind, onMute, onQuality, compact }: Props) {
   const w = hud.truth ? TRUTH : hud.wormhole && hud.level === 20 ? WORMHOLE_W : WEAPONS[hud.level - 1];
   const marked = hud.markedT > 0;
   const nuking = hud.nukeCount >= 0 && hud.phase === 'nuke';
@@ -430,6 +433,21 @@ export default function Hud({ hud, feed, ann, radarRef, onResume, onExit, onRewi
             <button onClick={onMute} className="rounded-full border border-white/30 bg-white/10 px-6 py-3 font-display transition hover:bg-white/20">
               {hud.muted ? '🔇 SOM OFF' : '🔊 SOM ON'}
             </button>
+          </div>
+          <div className="mt-1 flex items-center gap-2 rounded-full border border-white/20 bg-black/50 px-4 py-1.5">
+            <span className="text-xs font-bold tracking-wider text-white/70">GRÁFICOS:</span>
+            {QUALITY_LIST.map((q) => (
+              <button
+                key={q.id}
+                onClick={() => onQuality(q.id)}
+                className={cn(
+                  'rounded-full px-3 py-1 font-display text-xs transition',
+                  hud.quality === q.id ? 'bg-white text-black' : 'bg-white/10 text-white/80 hover:bg-white/20',
+                )}
+              >
+                {q.label.toUpperCase()}
+              </button>
+            ))}
           </div>
         </div>
       )}
