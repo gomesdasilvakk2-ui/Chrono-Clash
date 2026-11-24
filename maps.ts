@@ -1,0 +1,267 @@
+import type { Outfit } from './humanoid';
+
+export type Weather = 'none' | 'snow' | 'rain' | 'dust' | 'petals';
+
+export interface MapDef {
+  id: string;
+  name: string;
+  subtitle: string;
+  emoji: string;
+  accent: string;
+  grad: string;
+  sky: [number, number];
+  fog: number;
+  fogD: number;
+  ground: number;
+  ground2: number;
+  ambient: number;
+  sunColor: number;
+  sunI: number;
+  weather: Weather;
+  scenery: string;
+  destruction: string;
+  npcs: string;
+  civs: Outfit[];
+  night?: boolean;
+  hidden?: boolean;
+}
+
+const sk = {
+  dark: [0x8d5524, 0x5c3a1e, 0xc68642],
+};
+
+export const MAPS: MapDef[] = [
+  {
+    id: 'favela',
+    name: 'Favela',
+    subtitle: 'Becos, lajes e caixas d’água',
+    emoji: '🏘️',
+    accent: '#f97316',
+    grad: 'from-orange-500 via-rose-500 to-amber-400',
+    sky: [0x4aa8e8, 0xffd9a0],
+    fog: 0xf3d9b0,
+    fogD: 0.011,
+    ground: 0x8a7458,
+    ground2: 0x7a6548,
+    ambient: 0.7,
+    sunColor: 0xfff0d0,
+    sunI: 1.0,
+    weather: 'none',
+    scenery: 'Becos estreitos, lajes coloridas e caixas d’água no topo.',
+    destruction: 'Reboco e tijolo: fácil destruição (qualquer tiro abre buracos).',
+    npcs: 'Chinelo, bermuda tactel, camisas de time.',
+    civs: [
+      { label: 'Camisa do Mengão + bermuda tactel + chinelo', shirt: 0xd32f2f, stripe: 0x111111, stripeDir: 'h', pants: 0x2e7d32, shorts: true, sandals: true },
+      { label: 'Camisa da Seleção + bermuda azul + chinelo', shirt: 0xfdd835, pants: 0x1565c0, shorts: true, sandals: true, hat: 'cap', hatColor: 0x1b5e20 },
+      { label: 'Camisa listrada + tactel laranja + chinelo', shirt: 0xffffff, stripe: 0x111111, stripeDir: 'v', pants: 0xff6f00, shorts: true, sandals: true },
+      { label: 'Camisa verdão + bermuda + chinelo', shirt: 0x2e7d32, pants: 0x37474f, shorts: true, sandals: true, hat: 'headband', hatColor: 0xffffff },
+    ],
+  },
+  {
+    id: 'cdd',
+    name: 'Cidade de Deus',
+    subtitle: 'Quadras, vielas e muros de tijolo',
+    emoji: '🧱',
+    accent: '#ef4444',
+    grad: 'from-red-600 via-orange-600 to-yellow-500',
+    sky: [0x5aa9d8, 0xf6d9a8],
+    fog: 0xe8cfa0,
+    fogD: 0.01,
+    ground: 0x8b7a62,
+    ground2: 0x7b6b55,
+    ambient: 0.72,
+    sunColor: 0xffe8c0,
+    sunI: 1.05,
+    weather: 'dust',
+    scenery: 'Quadra de futebol cercada, vielas apertadas e muros de tijolo aparente.',
+    destruction: 'Tijolo aparente: resiste a 3 tiros. Cercas de metal são indestrutíveis.',
+    npcs: 'Jovens, barbeiros, comerciantes locais.',
+    civs: [
+      { label: 'Barbeiro: avental preto + camisa branca', shirt: 0xffffff, vest: 0x111111, pants: 0x263238, shoes: 0xffffff },
+      { label: 'Jovem: camisa laranja + bermuda + boné', shirt: 0xff7043, pants: 0x1a237e, shorts: true, hat: 'cap', hatColor: 0x111111, sandals: true },
+      { label: 'Comerciante: colete + boné', shirt: 0x558b2f, vest: 0xeeeeee, pants: 0x5d4037, hat: 'cap', hatColor: 0xffffff },
+      { label: 'Vendedor: faixa na cabeça + bermuda', shirt: 0x00acc1, pants: 0x212121, shorts: true, hat: 'headband', hatColor: 0xff1744, sandals: true },
+    ],
+  },
+  {
+    id: 'paris',
+    name: 'Paris',
+    subtitle: 'Cafés, prédios históricos e a Torre Eiffel',
+    emoji: '🗼',
+    accent: '#60a5fa',
+    grad: 'from-sky-500 via-indigo-400 to-rose-300',
+    sky: [0x6fa8dc, 0xf2e3d0],
+    fog: 0xdfe6ee,
+    fogD: 0.009,
+    ground: 0x8f8c86,
+    ground2: 0x7f7c76,
+    ambient: 0.75,
+    sunColor: 0xfff4e0,
+    sunI: 0.95,
+    weather: 'none',
+    scenery: 'Prédios haussmannianos, cafés com toldos vermelhos, plaza e Torre Eiffel ao fundo.',
+    destruction: 'Prédios de pedra são pesados (só Bazuca/Stands/Espada). Cafés de madeira caem fácil.',
+    npcs: 'Boêmios de boina, casacos longos, turistas e mímicos.',
+    civs: [
+      { label: 'Mímico: listras + boina', shirt: 0xffffff, stripe: 0x111111, stripeDir: 'h', pants: 0x111111, hat: 'beret', hatColor: 0x111111, skin: [0xf5f5f5], bald: true },
+      { label: 'Boêmio: casaco longo + boina vermelha', shirt: 0x6d4c41, coat: 0x3e2723, pants: 0x212121, hat: 'beret', hatColor: 0xb71c1c },
+      { label: 'Turista: camisa havaiana + boné', shirt: 0xff8a65, pants: 0xd7ccc8, shorts: true, hat: 'cap', hatColor: 0xffffff, sandals: true },
+      { label: 'Parisiense: casaco bege + cachecol', shirt: 0xeeeeee, coat: 0x8d6e63, scarf: 0xb71c1c, pants: 0x37474f, hat: 'beret', hatColor: 0x111111 },
+    ],
+  },
+  {
+    id: 'antartica',
+    name: 'Antártica',
+    subtitle: 'Bases científicas e geleiras quebráveis',
+    emoji: '🧊',
+    accent: '#67e8f9',
+    grad: 'from-cyan-300 via-sky-400 to-blue-600',
+    sky: [0x9ec9e8, 0xeaf6ff],
+    fog: 0xdce9f2,
+    fogD: 0.017,
+    ground: 0xe8f1f6,
+    ground2: 0xd5e4ee,
+    ambient: 0.85,
+    sunColor: 0xeaf4ff,
+    sunI: 0.8,
+    weather: 'snow',
+    scenery: 'Módulos de pesquisa, geleiras de gelo azul e nevasca constante.',
+    destruction: 'Gelo é quebrável com poucos tiros; bases de metal são indestrutíveis sem explosivos.',
+    npcs: 'Cientistas de traje térmico pesado e óculos de neve.',
+    civs: [
+      { label: 'Parca laranja + capuz + óculos de neve', shirt: 0xff6d00, pants: 0xff6d00, bulky: true, hat: 'hood', hatColor: 0xff6d00, goggles: true, shoes: 0x111111 },
+      { label: 'Parca azul + óculos de neve', shirt: 0x1565c0, pants: 0x0d47a1, bulky: true, hat: 'hood', hatColor: 0x1565c0, goggles: true, shoes: 0x111111 },
+      { label: 'Parca vermelha + capuz', shirt: 0xd32f2f, pants: 0x424242, bulky: true, hat: 'hood', hatColor: 0xd32f2f, goggles: true, shoes: 0x222222 },
+    ],
+  },
+  {
+    id: 'china',
+    name: 'China',
+    subtitle: 'Templos, pagodes e telhados de madeira',
+    emoji: '🏯',
+    accent: '#facc15',
+    grad: 'from-red-600 via-amber-500 to-yellow-300',
+    sky: [0x7fb4d8, 0xf7e6c4],
+    fog: 0xe9dcc2,
+    fogD: 0.01,
+    ground: 0x9b8f78,
+    ground2: 0x8a7e68,
+    ambient: 0.72,
+    sunColor: 0xfff0c8,
+    sunI: 0.95,
+    weather: 'petals',
+    scenery: 'Pátio de templo murado, pagodes de vários andares e casas de telhas.',
+    destruction: 'Madeira e telhas desmoronam fácil; leões de pedra e portões são pesados.',
+    npcs: 'Monges, camponeses de chapéu cônico, citadinos modernos.',
+    civs: [
+      { label: 'Camponês: chapéu cônico', shirt: 0x546e7a, pants: 0x37474f, hat: 'conic', hatColor: 0xe6c874, sandals: true },
+      { label: 'Monge: túnica laranja', shirt: 0xff8f00, coat: 0xff8f00, pants: 0xff8f00, bald: true, sandals: true },
+      { label: 'Citadino moderno: jaqueta escura', shirt: 0x263238, pants: 0x455a64, hair: 0x111111 },
+      { label: 'Seda vermelha com bordado dourado', shirt: 0xd32f2f, coat: 0xd32f2f, stripe: 0xffd54f, stripeDir: 'v', pants: 0x7f0000 },
+    ],
+  },
+  {
+    id: 'japao',
+    name: 'Japão',
+    subtitle: 'Tóquio Neon / Akihabara',
+    emoji: '🌃',
+    accent: '#e879f9',
+    grad: 'from-fuchsia-600 via-purple-600 to-cyan-400',
+    sky: [0x120a2e, 0x6b2a7a],
+    fog: 0x3a1a55,
+    fogD: 0.016,
+    ground: 0x2a2833,
+    ground2: 0x23212c,
+    ambient: 0.62,
+    sunColor: 0xb59cff,
+    sunI: 0.55,
+    weather: 'rain',
+    night: true,
+    scenery: 'Torres de neon, ruelas com portas shoji de papel e portões torii.',
+    destruction: 'Portas e paredes shoji de papel rasgam com qualquer golpe; torres de concreto são pesadas.',
+    npcs: 'Salarymen de terno, estudantes e cosplayers.',
+    civs: [
+      { label: 'Salaryman: terno + gravata', shirt: 0xffffff, vest: 0x1b1b1b, tie: 0xc62828, pants: 0x1b1b1b, shoes: 0x000000 },
+      { label: 'Estudante: gakuran azul-marinho', shirt: 0x1a237e, pants: 0x1a237e, hair: 0x111111 },
+      { label: 'Estudante: saia + gravata marinheira', shirt: 0xffffff, skirt: 0x1a237e, pants: 0xf0f0f0, scarf: 0xc62828, shoes: 0x111111 },
+      { label: 'Cosplayer: peruca ciano', shirt: 0xec407a, stripe: 0xffffff, pants: 0x7e57c2, hat: 'wig', hatColor: 0x00e5ff },
+    ],
+  },
+  {
+    id: 'africa',
+    name: 'África (Savana/Vila)',
+    subtitle: 'Cabanas de barro e postos de safári',
+    emoji: '🦁',
+    accent: '#f59e0b',
+    grad: 'from-amber-500 via-orange-500 to-red-500',
+    sky: [0xf08a3c, 0xffe0a3],
+    fog: 0xf2cf98,
+    fogD: 0.011,
+    ground: 0xc2a05a,
+    ground2: 0xb08f4c,
+    ambient: 0.74,
+    sunColor: 0xffc27a,
+    sunI: 1.05,
+    weather: 'dust',
+    scenery: 'Cabanas de barro, posto de safári em palafitas e acácias.',
+    destruction: 'Barro e palha cedem fácil; torres de madeira desabam.',
+    npcs: 'Guias de roupa cáqui e moradores com trajes tradicionais (Dashiki).',
+    civs: [
+      { label: 'Guia: roupa cáqui + chapéu safári', shirt: 0xc8b273, vest: 0x8d7b4a, pants: 0xb09a5b, hat: 'safari', hatColor: 0xa08a50, skin: sk.dark },
+      { label: 'Dashiki laranja e verde', shirt: 0xff6f00, stripe: 0x2e7d32, stripeDir: 'v', pants: 0x6a1b9a, hat: 'headband', hatColor: 0xffd600, skin: sk.dark },
+      { label: 'Dashiki azul e dourado', shirt: 0x1565c0, stripe: 0xffd600, stripeDir: 'h', pants: 0xfff3c4, skin: sk.dark },
+      { label: 'Morador: manta vermelha', shirt: 0xd84315, coat: 0xd84315, pants: 0xfff176, sandals: true, skin: sk.dark },
+    ],
+  },
+  {
+    id: 'ucrania',
+    name: 'Ucrânia',
+    subtitle: 'Complexo industrial brutalista soviético',
+    emoji: '🏭',
+    accent: '#38bdf8',
+    grad: 'from-sky-500 via-slate-500 to-yellow-400',
+    sky: [0x7d8c99, 0xc9d2d8],
+    fog: 0xb9c2c8,
+    fogD: 0.015,
+    ground: 0xb8bcbc,
+    ground2: 0xa6abab,
+    ambient: 0.8,
+    sunColor: 0xdfe6ee,
+    sunI: 0.7,
+    weather: 'snow',
+    scenery: 'Blocos de concreto soviéticos, chaminés e galpões metálicos sob neve fina.',
+    destruction: 'Concreto brutalista é pesado: derrube pilares com Bazuca ou Stands para soterrar inimigos.',
+    npcs: 'Civis de jaqueta pesada, ushankas e operários.',
+    civs: [
+      { label: 'Jaqueta pesada + ushanka marrom', shirt: 0x5d4037, pants: 0x263238, bulky: true, hat: 'ushanka', hatColor: 0x795548, shoes: 0x111111 },
+      { label: 'Casaco cinza + ushanka cinza', shirt: 0x37474f, pants: 0x212121, bulky: true, hat: 'ushanka', hatColor: 0x9e9e9e, shoes: 0x111111 },
+      { label: 'Operário: colete + capacete', shirt: 0x455a64, vest: 0xff6f00, pants: 0x263238, hat: 'hardhat', hatColor: 0xffd600, shoes: 0x3e2723 },
+      { label: 'Casaco verde + cachecol', shirt: 0x1b5e20, pants: 0x37474f, bulky: true, hat: 'ushanka', hatColor: 0x4e342e, scarf: 0xb71c1c, shoes: 0x111111 },
+    ],
+  },
+  {
+    id: 'santuario',
+    name: 'Local Sagrado',
+    subtitle: 'O santuário da Verdade',
+    emoji: '👁️',
+    accent: '#fde68a',
+    grad: 'from-amber-200 via-fuchsia-300 to-indigo-400',
+    sky: [0x1a1250, 0xf2d9ff],
+    fog: 0xd9c9ff,
+    fogD: 0.006,
+    ground: 0xf3eee4,
+    ground2: 0xe7defa,
+    ambient: 0.9,
+    sunColor: 0xfff3d0,
+    sunI: 1.0,
+    weather: 'dust',
+    night: true,
+    hidden: true,
+    scenery: 'Plataforma de mármore sobre um mar de nuvens, colunas douradas e o altar da Verdade.',
+    destruction: 'Mármore sagrado: indestrutível sem poderes supremos.',
+    npcs: 'Ecos do Vazio (adormecidos até você receber A Verdade).',
+    civs: [],
+  },
+];
+
+export const getMap = (id: string) => MAPS.find((m) => m.id === id) ?? MAPS[0];
